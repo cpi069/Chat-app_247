@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Room Chat</title>
+    <style>
+      /* Layout Basics */
+      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #36393f; color: white; display: flex; height: 100vh; overflow: hidden; }
+      
+      /* Sidebar (Left) */
+      #sidebar { width: 250px; background: #2f3136; padding: 20px; border-right: 1px solid #202225; display: flex; flex-direction: column; overflow-y: auto; }
+      h3 { color: #8e9297; text-transform: uppercase; font-size: 12px; margin-bottom: 10px; }
+      
+      /* Sidebar Rooms & Users */
+      .room-block { margin-bottom: 20px; }
+      .room-name { font-weight: bold; color: #fff; margin-bottom: 5px; cursor: pointer; }
+      .user-list { list-style: none; padding-left: 15px; margin: 0; }
+      .user-list li { color: #8e9297; font-size: 14px; padding: 2px 0; }
+      .user-list li::before { content: "•"; color: #3ba55c; margin-right: 5px; } /* Green dot */
+
+      /* Main Chat Area (Right) */
+      #main-chat { flex-grow: 1; display: flex; flex-direction: column; position: relative; }
+
+      /* Top Bar */
+      #controls { padding: 15px; background: #36393f; border-bottom: 1px solid #202225; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+      #username-input, #room-input { padding: 8px; border-radius: 5px; border: none; background: #202225; color: white; }
+      
+      /* Message List */
+      #messages { list-style-type: none; margin: 0; padding: 20px; flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+      
+      /* Chat Bubbles */
+      .message-box { padding: 8px 12px; border-radius: 4px; max-width: 80%; word-wrap: break-word; line-height: 1.4; }
+      .them { align-self: flex-start; }
+      .me { align-self: flex-end; background: #5865f2; color: white; }
+      
+      /* Input Area */
+      #form { background: #40444b; padding: 20px; display: flex; gap: 10px; }
+      #input { border: none; padding: 10px 15px; flex-grow: 1; border-radius: 8px; background: #2f3136; color: white; }
+      button { background: #5865f2; border: none; padding: 0 20px; border-radius: 5px; color: #fff; cursor: pointer; font-weight: bold; }
+      button:disabled { background: #4f545c; cursor: not-allowed; }
+
+    </style>
+  </head>
+  <body>
+    
+    <div id="sidebar">
+      <h3>Active Rooms</h3>
+      <div id="room-list-container">
+        <p style="color:#72767d; font-size: 13px;">No active rooms</p>
+      </div>
+    </div>
+
+    <div id="main-chat">
+      <div id="controls">
+        <input id="username-input" placeholder="Username" />
+        <input id="room-input" placeholder="Room Name (e.g. General)" />
+        <button onclick="joinGame()" id="join-btn">Join</button>
+      </div>
+
+      <ul id="messages"></ul>
+      
+      <form id="form" action="">
+        <input id="input" autocomplete="off" placeholder="Message..." disabled /><button id="send-btn" disabled>Send</button>
+      </form>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      var socket = io();
+      
+      var currentRoom = "";
+      var myName = "";
+
+      // DOM Elements
+      var roomContainer = document.getElementById('room-list-container');
+      var form = document.getElementById('form');
+      var input = document.getElementById('input');
+      var sendBtn = document.getElementById('send-btn');
+      var messages = document.getElementById('messages');
+      var joinBtn = document.getElementById('join-btn');
+      var roomInput = document.getElementById('room-input');
+      var userInput = document.getElementById('username-input');
+
+      // 1. Join Room Logic
+      function joinGame() {
+        myName = userInput.value;
+        currentRoom = roomInput.value;
+
+        if (myName && currentRoom) {
+          socket.emit('join room', { room: currentRoom, username: myName });
+          
+          // Enable chat UI
+          input.disabled = false;
+          sendBtn.disabled = false;
+          joinBtn.disabled = true;
+          userInput.disabled = true;
+          roomInput.disabled = true;
+          input.focus();
+        } else {
+          alert("Please enter both a name and a room.");
+        }
+      }
+
+      // 2. Listen for Room List Updates (The Sidebar)
+      socket.on('update room list', (roomState) => {
+        roomContainer.innerHTML = ""; // Clear current list
+
+        // Loop through the object { "General": ["Bob"], "Gaming": ["Alice"] }
+        for (const [roomName, users] of Object.entries(roomState)) {
+          
+          // Create HTML for each room
+          let userItems = users.map(u => `<li>${u}</li>`).join("");
+          
+          let roomHTML = `
+            <div class="room-block">
+              <div class="room-name"># ${roomName}</div>
+              <ul class="user-list">${userItems}</ul>
+            </div>
+          `;
+          
+          roomContainer.innerHTML += roomHTML;
+        }
+      });
+
+      // 3. Send Message Logic
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (input.value && myName) {
+          socket.emit('chat message', { msg: input.value, room: currentRoom, username: myName });
+          input.value = '';
+        }
+      });
+
+      // 4. Receive Message Logic
+      socket.on('chat message', function(data) {
+        var item = document.createElement('li');
+        item.classList.add('message-box');
+
+        // Check who sent it
+        var prefix = myName + ": ";
+        if (data.startsWith(prefix)) {
+          item.classList.add('me');
+          item.textContent = data.replace(prefix, "");
+        } else {
+          item.classList.add('them');
+          item.textContent = data; 
+        }
+
+        messages.appendChild(item);
+        messages.scrollTop = messages.scrollHeight; // Auto scroll to bottom
+      });
+    </script>
+  </body>
+</html>
